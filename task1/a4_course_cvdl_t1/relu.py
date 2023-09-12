@@ -9,17 +9,18 @@ class ReluLayer(BaseLayer):
     """
     def __init__(self):
         super().__init__()
-        raise NotImplementedError()
 
     def forward(self, input: np.ndarray) -> np.ndarray:
         """
         Принимает x, возвращает y(x)
         """
-        raise NotImplementedError()
+        self.is_positive = (input > 0).astype(float)
+        y = (input * self.is_positive)
+        return y
 
     def backward(self, output_grad: np.ndarray) -> np.ndarray:
         """
         Принимат dL/dy, возвращает dL/dx.
         """
-        raise NotImplementedError()
+        return output_grad * self.is_positive
 
