@@ -10,7 +10,10 @@ class CrossEntropyLoss(BaseLayer):
     """
     def __init__(self):
         super().__init__()
-        raise NotImplementedError()
+        self.grad_input = None
+        self.output = None
+        self.pred = None
+        self.target = None
 
     def forward(self, pred: np.ndarray, target: np.ndarray) -> np.ndarray:
         """
@@ -26,11 +29,21 @@ class CrossEntropyLoss(BaseLayer):
         P[B, c] = exp(pred[B, c]) / Sum[c](exp(pred[B, c])
         Loss[B] = - Sum[c]log( prob[B, C] * target[B, C]) ) = -log(prob[B, C_correct])
         """
-        raise NotImplementedError()
+        self.pred = pred
+        self.target = target
+
+        p = (np.exp(pred)) / np.sum(np.exp(pred), axis=1, keepdims=True)
+        self.output = -np.log(np.sum(p * target, axis=-1))
+
+        return self.output
 
     def backward(self) -> np.ndarray:
         """
         Возвращает градиент лосса по pred, т.е. первому аргументу .forward
         Не принимает никакого градиента по определению.
         """
-        raise NotImplementedError()
+        self.grad_input = (np.exp(self.pred))/np.sum(np.exp(self.pred), axis=1, keepdims=True)
+        mask = (np.ones_like(self.target)) * self.target
+        self.grad_input -= mask
+
+        return self.grad_input

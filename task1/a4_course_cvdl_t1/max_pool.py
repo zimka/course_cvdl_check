@@ -29,7 +29,9 @@ class MaxPoolLayer(BaseLayer):
     def __init__(self, kernel_size: int, stride: int, padding: int):
         assert(kernel_size % 2 == 1)
         super().__init__()
-        raise NotImplementedError()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
 
     @staticmethod
     def _pad_neg_inf(tensor, one_size_pad, axis=[-1, -2]):
@@ -38,14 +40,74 @@ class MaxPoolLayer(BaseLayer):
         Метод не проверяется в тестах -- можно релизовать слой без
         использования этого метода.
         """
-        pass
+        N, C, H, W = tensor.shape
+
+        target_shape = [N, C, H, W]
+        for a in axis:
+            target_shape[a] += 2 * one_size_pad
+
+        for dim_in, dim_target in zip(tensor.shape, target_shape):
+            assert dim_target >= dim_in
+
+        pad_width = []
+        for dim_in, dim_target in zip(tensor.shape, target_shape):
+            if (dim_in - dim_target) % 2 == 0:
+                pad_width.append((int(abs((dim_in - dim_target) / 2)), int(abs((dim_in - dim_target) / 2))))
+            else:
+                pad_width.append((int(abs((dim_in - dim_target) / 2)), (int(abs((dim_in - dim_target) / 2)) + 1)))
+
+        return np.pad(tensor, pad_width, 'constant', constant_values=-np.inf)
 
     def forward(self, input: np.ndarray) -> np.ndarray:
         assert input.shape[-1] == input.shape[-2]
         assert (input.shape[-1] + 2 * self.padding - self.kernel_size) % self.stride  == 0
-        raise NotImplementedError()
+        N, C, H, W = input.shape
+        H = 1 + int((H + 2 * self.padding - self.kernel_size) // self.stride)
+        W = 1 + int((W + 2 * self.padding - self.kernel_size) // self.stride)
+
+        xpad = self._pad_neg_inf(input, self.padding)
+        self.input = xpad
+        self.output = np.zeros((N, C, H, W))
+        self.mask = np.zeros((N, C, H, W))
+
+        for xn in range(N):
+            for fn in range(C):
+                for i in range(H):
+                    h_start = i * self.stride
+                    h_end = i * self.stride + self.kernel_size
+                    for j in range(W):
+                        w_start = j * self.stride
+                        w_end = j * self.stride + self.kernel_size
+                        window = xpad[xn, fn, h_start: h_end, w_start:w_end]
+                        max_ids = np.unravel_index(window.argmax(), window.shape)
+                        self.output[xn, fn, i, j] = np.max(xpad[xn, fn, h_start: h_end, w_start:w_end])
+
+        del xpad
+
+
+
+        return self.output
 
 
     def backward(self, output_grad: np.ndarray)->np.ndarray:
-        raise NotImplementedError()
+        N, C, H, W = self.input.shape
 
+        self.input_grad = np.zeros(self.input.shape)
+        print(self.output.shape)
+        print(output_grad.shape)
+
+        for xn in range(N):
+            for fn in range(C):
+                for i in range(H):
+                    h_start = i * self.stride
+                    h_end = i * self.stride + self.kernel_size
+                    for j in range(W):
+                        w_start = j * self.stride
+                        w_end = j * self.stride + self.kernel_size
+                        window = self.input[xn, fn, h_start: h_end, w_start:w_end]
+                        max_ids = np.unravel_index(window.argmax(), window.shape)
+
+                        self.input_grad[xn, fn, h_start: h_end, w_start:w_end][max_ids] = output_grad[xn, fn, i, j]
+
+        self.input_grad = self.input_grad[:, :, self.padding:-self.padding, self.padding:-self.padding]
+        return self.input_grad
