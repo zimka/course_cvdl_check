@@ -91,6 +91,7 @@ class MaxPoolLayer(BaseLayer):
 
     def backward(self, output_grad: np.ndarray)->np.ndarray:
         N, C, H, W = self.input.shape
+        _, _, Hout, Wout = output_grad.shape
 
         self.input_grad = np.zeros(self.input.shape)
         print(self.output.shape)
@@ -98,16 +99,17 @@ class MaxPoolLayer(BaseLayer):
 
         for xn in range(N):
             for fn in range(C):
-                for i in range(H):
+                for i in range(Hout):
                     h_start = i * self.stride
                     h_end = i * self.stride + self.kernel_size
-                    for j in range(W):
+                    for j in range(Wout):
                         w_start = j * self.stride
                         w_end = j * self.stride + self.kernel_size
                         window = self.input[xn, fn, h_start: h_end, w_start:w_end]
                         max_ids = np.unravel_index(window.argmax(), window.shape)
 
-                        self.input_grad[xn, fn, h_start: h_end, w_start:w_end][max_ids] = output_grad[xn, fn, i, j]
+                        self.input_grad[xn, fn, h_start: h_end, w_start:w_end][max_ids] += output_grad[xn, fn, i, j]
 
         self.input_grad = self.input_grad[:, :, self.padding:-self.padding, self.padding:-self.padding]
+
         return self.input_grad
