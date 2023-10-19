@@ -15,7 +15,14 @@ class PointsNonMaxSuppression(nn.Module):
         self.kernel_size = kernel_size
 
     def forward(self, points):
-        raise NotImplementedError()
+
+        pad_size = (self.kernel_size - 1) // 2
+        points_peaks = nn.functional.max_pool2d(
+            points, (self.kernel_size, self.kernel_size), stride=1, padding=pad_size)
+
+        mask = (points_peaks == points)
+        points *= mask
+
         return points
 
 

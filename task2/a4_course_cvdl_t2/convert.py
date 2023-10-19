@@ -7,6 +7,7 @@
   [dy, dx, h, w] для каждой точки (y, x)
 Все характеристики вычисляются в пикселях.
 """
+import numpy as np
 import torch
 from torch import nn
 from typing import Tuple
@@ -99,7 +100,7 @@ class ObjectsToPoints(nn.Module):
         """
         По умолчанию heatmaps - пустые и заполнены нулями.
         """
-        raise NotImplementedError()
+        return torch.zeros(b, с + 4, hw, hw)
 
     @classmethod
     def compute_objects_locations(cls, objects: torch.Tensor)-> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -109,8 +110,11 @@ class ObjectsToPoints(nn.Module):
             batch_idx[B * N], y_idx[B * N], x_idx[B * N]
         """
         batch_size, objects_per_image, d6 = objects.shape
-        raise NotImplementedError()
-        return batch_idx.long(), y_idx.long(), x_idx.long()
+        x = objects[:,:,1].flatten()
+        y = objects[:,:,0].flatten()
+        batch_idx = torch.arange(batch_size).reshape(-1, 1) * torch.ones(batch_size, objects_per_image)
+
+        return batch_idx.flatten().long(), y.flatten().long(), x.flatten().long()
 
     @classmethod
     def compute_objects_offsets(cls, objects: torch.Tensor)-> Tuple[torch.Tensor, torch.Tensor]:
@@ -119,7 +123,12 @@ class ObjectsToPoints(nn.Module):
         Возвращает для всех объектов их поправки положения их центров по отношению к локациям
          в виде двух плоских тензоров: dy[B * N], dx[B * N]
         """
-        raise NotImplementedError()
+
+        x = objects[:, :, 1].flatten()
+        y = objects[:, :, 0].flatten()
+        dx = x - x.floor()
+        dy = y - y.floor()
+
         return dy, dx
 
     @classmethod
@@ -129,7 +138,9 @@ class ObjectsToPoints(nn.Module):
         Возвращает для всех объектов их размеры в пикселях в виде двух плоских тензоров:
             dy[B * N], dx[B * N]
         """
-        raise NotImplementedError()
+        h = objects[:, :, 2]
+        w = objects[:, :, 3]
+
         return h.flatten(), w.flatten()
 
     @classmethod
@@ -138,7 +149,14 @@ class ObjectsToPoints(nn.Module):
         Сглаживает one-hot points_heatmap ядром с гауссианой.
         Скорее всего, через свёртку с ядром.
         """
-        raise NotImplementedError()
+        B, C, H, W = points_heatmap.shape
+
+        smooth_kernel = smooth_kernel[None, None, :, :]
+        _, _, K, K = smooth_kernel.shape
+        stacked_kernel = torch.ones(C, 1, 1, 1) * smooth_kernel
+        smooth_heatmap = torch.nn.functional.conv2d(points_heatmap, stacked_kernel, padding='same', groups=C)
+
+        return smooth_heatmap
 
     @staticmethod
     def _gaussian_2d(kernel_size: int) -> torch.Tensor:
@@ -181,5 +199,28 @@ class PointsToObjects(nn.Module):
         self.min_conf = min_confidence
 
     def forward(self, points_heatmap):
-        raise NotImplementedError()
+
+        B, C, H, W = points_heatmap.shape
+
+        probs = points_heatmap[:, :-4].reshape(B, -1)
+        values, i = torch.topk(probs, self.top_k, dim=1)
+
+        classes_idx = torch.div(i, H * W).long()
+        y_idx = torch.div(i % (H * W), W).long()
+        x_idx = ((i % (H * W)) % W).long()
+        ones_idxs = torch.ones_like(classes_idx)
+        batch_idx = torch.arange(B).unsqueeze(1) * ones_idxs
+
+        dy = y_idx + points_heatmap[batch_idx, -4 * ones_idxs, y_idx, x_idx]
+        dx = x_idx + points_heatmap[batch_idx, -3 * ones_idxs, y_idx, x_idx]
+
+        h = points_heatmap[batch_idx, -2 * ones_idxs, y_idx, x_idx]
+        w = points_heatmap[batch_idx, -1 * ones_idxs, y_idx, x_idx]
+
+        objects = torch.stack([dy, dx, h, w, classes_idx, values], dim=2)
+
+        mask = values > self.min_conf
+
+        objects = objects * (mask).unsqueeze(2)
+
         return objects

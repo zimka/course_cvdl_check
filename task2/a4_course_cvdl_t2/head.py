@@ -20,9 +20,35 @@ class CenterNetHead(nn.Module):
     def __init__(self, k_in_channels=64, c_classes: int = 2):
         super().__init__()
         self.c_classes = c_classes
-        raise NotImplementedError()
+
+        self.classes_convs = nn.Sequential(
+            nn.Conv2d(k_in_channels, k_in_channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(k_in_channels),
+            nn.ReLU(),
+            nn.Conv2d(k_in_channels, self.c_classes + 1, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Softmax2d()
+        )
+
+        self.offset_convs = nn.Sequential(
+            nn.Conv2d(k_in_channels, k_in_channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(k_in_channels),
+            nn.ReLU(),
+            nn.Conv2d(k_in_channels, 2, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Sigmoid()
+        )
+
+        self.size_convs = nn.Sequential(
+            nn.Conv2d(k_in_channels, k_in_channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(k_in_channels),
+            nn.ReLU(),
+            nn.Conv2d(k_in_channels, 2, kernel_size=1, stride=1, padding=0, bias=False)
+        )
+
 
 
     def forward(self, input_t: torch.Tensor):
-        raise NotImplementedError()
+        class_heatmap = self.classes_convs(input_t)[:, : -1]
+        offset_map = self.offset_convs(input_t)
+        size_map = self.size_convs(input_t)
+
         return torch.cat([class_heatmap, offset_map, size_map], dim=1)
