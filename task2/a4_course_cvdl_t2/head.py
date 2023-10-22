@@ -20,9 +20,28 @@ class CenterNetHead(nn.Module):
     def __init__(self, k_in_channels=64, c_classes: int = 2):
         super().__init__()
         self.c_classes = c_classes
-        raise NotImplementedError()
+        self.classi = nn.Sequential(
+          nn.Conv2d(k_in_channels, k_in_channels, 3, 1, 1),
+          nn.ReLU(inplace=True),
+          nn.Conv2d(k_in_channels, c_classes + 1, 1),
+          nn.Softmax2d()
+        )
+        self.offset = nn.Sequential(
+          nn.Conv2d(k_in_channels, k_in_channels, 3, 1, 1),
+          nn.ReLU(inplace=True),
+          nn.Conv2d(k_in_channels, 2, 1),
+          nn.Sigmoid()
+        )
+
+        self.size = nn.Sequential(
+          nn.Conv2d(k_in_channels, k_in_channels, 3, 1, 1),
+          nn.ReLU(inplace=True),
+          nn.Conv2d(k_in_channels, 2, 1)
+        )
 
 
     def forward(self, input_t: torch.Tensor):
-        raise NotImplementedError()
-        return torch.cat([class_heatmap, offset_map, size_map], dim=1)
+      class_heatmap = self.classi(input_t)[:, :-1]
+      offset_map = self.offset(input_t)
+      size_map = self.size(input_t)
+      return torch.cat([class_heatmap, offset_map, size_map], dim=1)

@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torchvision.ops import sigmoid_focal_loss
 from a4_course_cvdl_t2.convert import ObjectsToPoints
 
 
@@ -23,6 +24,7 @@ class CenterNetLoss(nn.Module):
         if obj_to_points is None:
             obj_to_points = ObjectsToPoints(**kwargs)
         self.obj_to_points = obj_to_points
+        self.l1 = nn.L1Loss(reduction='mean')
 
     def forward(self, pred_heatmaps, target_objects):
         """
@@ -57,11 +59,12 @@ class CenterNetLoss(nn.Module):
         lsize = self.loss_l1(pred_sizes, target_sizes, is_real_object) / (num_real_objects + 1)
         return torch.stack([lk, self.l_offset_lambda * loff, lsize * self.l_size_lambda ], axis=-1)
 
-    def loss_fl(self, predict_cyx, target_cyx, alpha=2, beta=4):
+    def loss_fl(self, predict_cyx, target_cyx, alpha=2, beta=4, eps=1e-6):
         """
         Focal loss между двумя heatmap. В статье параметры FL alpha=2, beta=4.
         """
-        raise NotImplementedError()
+        predict_cyx = predict_cyx.clip(eps, 1 - eps)
+        return -((target_cyx == 1) * (1 - predict_cyx) ** alpha * torch.log(predict_cyx) + (target_cyx != 1) * (1 - target_cyx) ** beta * predict_cyx ** alpha * torch.log(1 - predict_cyx)).sum() / predict_cyx.shape[0]
 
 
     def loss_l1(self, predict, target, is_real_object):
@@ -71,5 +74,5 @@ class CenterNetLoss(nn.Module):
         (т.к. их для всех изображений генерируется по N, а детекций может быть меньше),
         и для объектов с is_real_object=False следует считать лосс как 0.
         """
-        raise NotImplementedError()
+        loss = self.l1(predict * is_real_object, target * is_real_object)
         return loss

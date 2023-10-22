@@ -4,6 +4,7 @@
 """
 from torch import nn
 from torchvision.models import resnet18
+from torchvision.models.inception import BasicConv2d
 
 
 class HeadlessPretrainedResnet18Encoder(nn.Module):
@@ -32,6 +33,30 @@ class HeadlessPretrainedResnet18Encoder(nn.Module):
         return self.md(x)
 
 
+class ResnetBlock(nn.Module):
+
+  def __init__(self, cin, cout, stride=1, k=3):
+    super().__init__()
+    self.fun = nn.Sequential(
+      nn.Conv2d(cin, cout, k, stride, 1),
+      nn.BatchNorm2d(cout),
+      nn.ReLU(inplace=True),
+      nn.Conv2d(cout, cout, k, 1, 1),
+      nn.BatchNorm2d(cout),
+      nn.ReLU(inplace=True)
+    )
+    if stride == 1:
+      self.proj = nn.Identity()
+    else:
+      self.proj = nn.Conv2d(cin, cout, k, stride, 1)
+  def forward(self, x):
+    projed = self.proj(x)
+    f = self.fun(x)
+    return f + projed
+
+
+
+
 class HeadlessResnet18Encoder(nn.Module):
     """
     Версия resnet, которую надо написать с нуля.
@@ -41,10 +66,28 @@ class HeadlessResnet18Encoder(nn.Module):
     def __init__(self):
         # полносверточная сеть, архитектуру можно найти в
         # https://arxiv.org/pdf/1512.03385.pdf, Table1
-        raise NotImplementedError()
+      super().__init__()
+      self.fun = nn.Sequential(
+        nn.Conv2d(3, 64, 7, 2, 3),
+        nn.BatchNorm2d(64),
+        nn.ReLU(inplace=True),
+        nn.MaxPool2d(3, 2, 1),
+
+        ResnetBlock(64, 64),
+        ResnetBlock(64, 64),
+
+        ResnetBlock(64, 128, 2),
+        ResnetBlock(128, 128),
+
+        ResnetBlock(128, 256, 2),
+        ResnetBlock(256, 256),
+
+        ResnetBlock(256, 512, 2),
+        ResnetBlock(512, 512)
+      )
 
     def forward(self, x):
-        raise NotImplementedError()
+        return self.fun(x)
 
 
 class UpscaleTwiceLayer(nn.Module):
@@ -53,13 +96,16 @@ class UpscaleTwiceLayer(nn.Module):
     В реализации из "Objects as Points" используются Transposed Convolutions с
     отсылкой по деталям к https://arxiv.org/pdf/1804.06208.pdf
     """
-    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, output_padding=0):
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, output_padding=1):
         super().__init__()
-        raise NotImplementedError()
+        self.fun = nn.Sequential(
+          nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride=2, padding=padding, output_padding=output_padding),
+          nn.BatchNorm2d(out_channels),
+          nn.ReLU(inplace=True)
+        )
 
     def forward(self, x):
-        raise NotImplementedError()
-
+        return self.fun(x)
 
 class ResnetBackbone(nn.Module):
     """
