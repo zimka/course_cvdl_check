@@ -15,8 +15,11 @@ class PointsNonMaxSuppression(nn.Module):
         self.kernel_size = kernel_size
 
     def forward(self, points):
-        raise NotImplementedError()
-        return points
+        classes = points.shape[1] - 4
+        cleared_points = torch.max(points[:, 0:classes], dim = 1)[0]
+        maxes = nn.MaxPool2d(kernel_size = 3, stride = 1, padding = 1)(cleared_points)
+        equality = ((maxes == cleared_points).repeat_interleave(classes + 4, 0)).reshape(points.shape)
+        return points * equality
 
 
 class ScaleObjects(nn.Module):
